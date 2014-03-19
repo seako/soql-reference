@@ -36,7 +36,7 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
   import typeInfo._
   import functionInfo._
 
-  def goodArity(function: Func, parameters: Seq[Val]): Boolean = {
+  def goodArity(function: MFunc, parameters: Seq[Val]): Boolean = {
     if(function.isVariadic) {
       function.minArity <= parameters.length
     } else {
@@ -46,7 +46,7 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
 
   /** Resolve a set of overloads into a single candidate.  If you have only one, you should use
     * `evaluateCandidate` directly, as this loses type mismatch information. */
-  def resolveOverload(candidates: Set[Func], parameters: Seq[Val]): OverloadResult[Type] = {
+  def resolveOverload(candidates: Set[MFunc], parameters: Seq[Val]): OverloadResult[Type] = {
     require(candidates.nonEmpty, "empty candidate set")
     require(candidates.forall { candidate => candidate.name == candidates.iterator.next().name }, "differently-named functions") // this is _overload_ resolution!
     require(candidates.forall(goodArity(_, parameters)), "bad candidate arity")
@@ -56,8 +56,8 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
     // parameters.
     val good = for {
       candidate <- candidates.toSeq
-      (mfunc, Passed(conversions)) <- evaluateCandidate(candidate, parameters)
-    } yield (mfunc, conversions)
+      Passed(conversions) <- Iterator.single(evaluateCandidate(candidate, parameters))
+    } yield (candidate, conversions)
 
     if(good.isEmpty) {
       NoMatch
@@ -87,26 +87,8 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
     }
   }
 
-  def evaluateCandidate(candidate: Func, parameters: Seq[Val]): Iterator[(MFunc, CandidateEvaluation[Type])] = {
+  def evaluateCandidate(candidate: MFunc, parameters: Seq[Val]): CandidateEvaluation[Type] = {
     require(goodArity(candidate, parameters))
-
-    // yay combinatorial explosion!  Fortunately in practice we'll only ever have one or _maybe_ two type parameters.
-    def loop(remaining: List[String], bindings: Map[String, Type]): Iterator[(MFunc, CandidateEvaluation[Type])] = {
-      remaining match {
-        case hd :: tl =>
-          typeParameterUniverse.filter(candidate.constraints.getOrElse(hd, typeParameterUniverse)).iterator.flatMap { typ =>
-            loop(tl, bindings + (hd -> typ))
-          }
-        case Nil =>
-          val monomorphic = MonomorphicFunction(candidate, bindings)
-          Iterator(monomorphic -> evaluateMonomorphicCandidate(MonomorphicFunction(candidate, bindings), parameters))
-      }
-    }
-    loop(candidate.typeParameters.toList, Map.empty)
-  }
-
-  def evaluateMonomorphicCandidate(candidate: MFunc, parameters: Seq[Val]): CandidateEvaluation[Type] = {
-    require(goodArity(candidate.function, parameters))
     val parameterConversions: ConvSet = (candidate.allParameters, parameters, Stream.from(0)).zipped.map { (expectedTyp, value, idx) =>
       if(canBePassedToWithoutConversion(value.typ, expectedTyp)) {
         None
@@ -130,12 +112,12 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
     Passed(parameterConversions)
   }
 
-  def narrowDownFailure(fs: Set[Func], params: Seq[Val]): UnificationFailure[Type] = {
+  def narrowDownFailure(fs: Set[MFunc], params: Seq[Val]): UnificationFailure[Type] = {
     // the first value we return will be the first index whose
     // addition causes a type error.
     for(paramList <- params.inits.toIndexedSeq.reverse.drop(1)) {
       val n = paramList.length
-      val res = resolveOverload(fs.map { f => f.copy(parameters = f.parameters.take(n)) }, paramList)
+      val res = resolveOverload(fs.map(_.takeParameters(n)), paramList)
       res match {
         case NoMatch =>
           val paramIdx = n - 1
@@ -165,7 +147,7 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
     if(paramsByType.size == 2 && paramsByType.contains(nullType)) {
       val typedParams = (paramsByType - nullType).head._2
       if(typedParams.size >= parameters.size/2) {
-        resolveOverload(failure.keySet.filter(allParamsTheSameType(_).isDefined).map(_.function), parameters.map { p => if(p.typ == nullType) typedParams(0) else p }) match {
+        resolveOverload(failure.keySet.filter(allParamsTheSameType(_).isDefined), parameters.map { p => if(p.typ == nullType) typedParams(0) else p }) match {
           case Matched(f, c) => return Some(("half or more not-null same type", f, c))
           case _ => // nothing
         }
@@ -182,7 +164,7 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
       }
       val withoutImplicitConversions = new FunctionCallTypechecker[Type](typeInfo, functionInfoWithoutImplicitConversions)
       for(t <- typeParameterUniverse) {
-        withoutImplicitConversions.resolveOverload(failure.map(_._1.function).toSet, parameters.map { p => if(p.typ == nullType) SimpleValue(t) else p }) match {
+        withoutImplicitConversions.resolveOverload(failure.map(_._1).toSet, parameters.map { p => if(p.typ == nullType) SimpleValue(t) else p }) match {
           case Matched(f,c) => return Some(("one null parameter", f, c))
           case _ => // nothing
         }

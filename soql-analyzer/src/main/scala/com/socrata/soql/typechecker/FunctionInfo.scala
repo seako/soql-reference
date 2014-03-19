@@ -11,5 +11,5 @@ trait FunctionInfo[Type] {
     *       compatible with those types (in the sense of `canBePassedToWithoutConversion`) */
   def implicitConversions(from: Type, to: Type): Option[MonomorphicFunction[Type]]
 
-  def functionsWithArity(name: FunctionName, n: Int): Set[Function[Type]]
+  def functionsWithArity(name: FunctionName, n: Int): Set[MonomorphicFunction[Type]]
 }

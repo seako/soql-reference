@@ -1,46 +1,37 @@
 package com.socrata.soql.functions
 
 import com.socrata.soql.environment.FunctionName
-
-sealed trait TypeLike[+Type]
-case class FixedType[Type](typ: Type) extends TypeLike[Type]
-case class VariableType(name: String) extends TypeLike[Nothing]
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * @note This class has identity equality semantics even though it's a case class.  This
- *       is for performance reasons, as there should somewhere be a static list of supported
- *       functions which are re-used for all instances in the entire system.
+ * A container for conceptually related monomorphic functions.
+ *
+ * @note This class has identity equality semantics.  There should be one list of all
+ *       the Functions in the system from which all function objects are taken.
  * @param identity A _unique_ name for this function that can be used to identify it when
  *                 serializing things that refer to it.
  */
-case class Function[+Type](identity: String, name: FunctionName, constraints: Map[String, Any => Boolean /* ick, but without Set being covariant... */], parameters: Seq[TypeLike[Type]], repeated: Option[TypeLike[Type]], result: TypeLike[Type], isAggregate: Boolean = false) {
-  val minArity = parameters.length
-  def isVariadic = repeated.isDefined
+abstract class Function[+Type](val identity: String, val name: FunctionName) {
+  private val identityCtr = new AtomicInteger(0)
 
-  lazy val typeParameters: Set[String] =
-    (parameters ++ List(result) ++ repeated).collect {
-      case VariableType(typeParameter) => typeParameter
-    }.toSet
+  // This should only be called from the ctor.
+  protected def f[T >: Type](parameters: Seq[T], repeated: Option[T], result: T, isAggregate: Boolean = false) =
+    new MonomorphicFunction[T](this, identity + " " + identityCtr.getAndIncrement, parameters, repeated, result, isAggregate)
 
-  lazy val monomorphic: Option[MonomorphicFunction[Type]] =
-    if(result.isInstanceOf[FixedType[_]] && parameters.forall(_.isInstanceOf[FixedType[_]]))
-      Some(MonomorphicFunction(this, Map.empty))
-    else
-      None
+  override def toString = "#<Function " + name + ">"
 
-  override def toString = {
-    val sb = new StringBuilder(name.toString).append(" :: ")
-    sb.append(parameters.map {
-      case FixedType(typ) => typ
-      case VariableType(name) => name
-    }.mkString("", " -> ", " -> "))
-    sb.append(result match {
-      case FixedType(typ) => typ
-      case VariableType(name) => name
-    })
-    sb.toString
+  val functions: Seq[MonomorphicFunction[Type]]
+
+  lazy val byIdentity = functions.groupBy(_.identity).mapValues(_.head).toMap
+
+  override final def hashCode = super.hashCode
+  override final def equals(that: Any) = super.equals(that)
+}
+
+object Function {
+  def simple[T](identity: String, name: FunctionName, parameters: Seq[T], repeated: Option[T], result: T, isAggregate: Boolean = false) = {
+    new Function[T](identity, name) {
+      val functions = List(f(parameters, repeated, result, isAggregate))
+    }
   }
-
-  override final def hashCode = System.identityHashCode(this)
-  override final def equals(that: Any) = this eq that.asInstanceOf[AnyRef]
 }

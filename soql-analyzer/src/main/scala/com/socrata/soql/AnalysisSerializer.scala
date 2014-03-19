@@ -82,10 +82,7 @@ class AnalysisSerializer[C,T](serializeColumn: C => String, serializeType: T => 
       functions.putIfAbsent(func, count) match {
         case -1 =>
           registerString(func.function.identity)
-          func.bindings.foreach { case (typeVar, typ) =>
-            registerString(typeVar)
-            registerType(typ)
-          }
+          registerString(func.identity)
           count
         case id =>
           id
@@ -113,13 +110,9 @@ class AnalysisSerializer[C,T](serializeColumn: C => String, serializeType: T => 
       }
 
     private def saveFunctions(out: CodedOutputStream) =
-      saveRegistry(out, functions) { case MonomorphicFunction(function, bindings) =>
+      saveRegistry(out, functions) { case function: MonomorphicFunction[T] =>
+        out.writeUInt32NoTag(strings.get(function.function.identity))
         out.writeUInt32NoTag(strings.get(function.identity))
-        out.writeUInt32NoTag(bindings.size)
-        for((typeVar, typ) <- bindings) {
-          out.writeUInt32NoTag(strings.get(typeVar))
-          out.writeUInt32NoTag(types.get(typ))
-        }
       }
 
     private def saveStrings(out: CodedOutputStream) =

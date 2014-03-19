@@ -70,13 +70,8 @@ class AnalysisDeserializer[C, T](columnDeserializer: String => C, typeDeserializ
       }
       val functions = readRegistry(in) {
         val function = functionMap(strings.get(in.readUInt32()))
-        val bindingsBuilder = Map.newBuilder[String, T]
-        for(_ <- 1 to in.readUInt32()) {
-          val typeVar = strings.get(in.readUInt32())
-          val typ = types.get(in.readUInt32())
-          bindingsBuilder += typeVar -> typ
-        }
-        MonomorphicFunction(function, bindingsBuilder.result())
+        val identity = strings.get(in.readUInt32())
+        function.byIdentity(identity)
       }
 
       new DeserializationDictionaryImpl(types, strings, labels, columns, functions)

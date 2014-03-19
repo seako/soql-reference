@@ -10,7 +10,9 @@ sealed abstract class SoQLFunctions
 object SoQLFunctions {
   private val log = org.slf4j.LoggerFactory.getLogger(classOf[SoQLFunctions])
 
-  private val Ordered = Set[Any](
+  private val Universe = SoQLType.typesByName.values.toSeq.sortBy(_.name)
+
+  private val Ordered = Seq[SoQLType](
     SoQLText,
     SoQLNumber,
     SoQLDouble,
@@ -23,117 +25,167 @@ object SoQLFunctions {
     SoQLID,
     SoQLVersion
   )
-  private val NumLike = Set[Any](SoQLNumber, SoQLDouble, SoQLMoney)
-  private val RealNumLike = Set[Any](SoQLNumber, SoQLDouble)
-  private val GeospatialLike = Set[Any](SoQLLocation)
+  private val Equatable = Ordered
+  private val NumLike = Seq[SoQLType](SoQLNumber, SoQLDouble, SoQLMoney)
+  private val RealNumLike = Seq[SoQLType](SoQLNumber, SoQLDouble)
+  private val GeospatialLike = Seq[SoQLType](SoQLLocation)
 
-  val TextToFixedTimestamp = new MonomorphicFunction("text to fixed timestamp", SpecialFunctions.Cast(SoQLFixedTimestamp.name), Seq(SoQLText), None, SoQLFixedTimestamp).function
-  val TextToFloatingTimestamp = new MonomorphicFunction("text to floating timestamp", SpecialFunctions.Cast(SoQLFloatingTimestamp.name), Seq(SoQLText), None, SoQLFloatingTimestamp).function
-  val TextToDate = new MonomorphicFunction("text to date", SpecialFunctions.Cast(SoQLDate.name), Seq(SoQLText), None, SoQLDate).function
-  val TextToTime = new MonomorphicFunction("text to time", SpecialFunctions.Cast(SoQLTime.name), Seq(SoQLText), None, SoQLTime).function
-  val Concat = Function("||", SpecialFunctions.Operator("||"), Map.empty, Seq(VariableType("a"), VariableType("b")), None, FixedType(SoQLText))
-  val Gte = Function(">=", SpecialFunctions.Operator(">="), Map("a"->Ordered), Seq(VariableType("a"), VariableType("a")), None, FixedType(SoQLBoolean))
-  val Gt = Function(">", SpecialFunctions.Operator(">"), Map("a"->Ordered), Seq(VariableType("a"), VariableType("a")), None, FixedType(SoQLBoolean))
-  val Lt = Function("<", SpecialFunctions.Operator("<"), Map("a"->Ordered), Seq(VariableType("a"), VariableType("a")), None, FixedType(SoQLBoolean))
-  val Lte = Function("<=", SpecialFunctions.Operator("<="), Map("a"->Ordered), Seq(VariableType("a"), VariableType("a")), None, FixedType(SoQLBoolean))
-  val Eq = Function("=", SpecialFunctions.Operator("="), Map("a"->Ordered), Seq(VariableType("a"), VariableType("a")), None, FixedType(SoQLBoolean))
-  val EqEq = Eq.copy(identity = "==", name = SpecialFunctions.Operator("=="))
-  val Neq = Function("<>", SpecialFunctions.Operator("<>"), Map("a"->Ordered), Seq(VariableType("a"), VariableType("a")), None, FixedType(SoQLBoolean))
-  val BangEq = Neq.copy(identity = "!=", name = SpecialFunctions.Operator("!="))
-
-  // arguments: lat, lon, distance in meter
-  val WithinCircle = Function("within_circle", FunctionName("within_circle"), Map ("a"-> GeospatialLike, "b" -> RealNumLike),
-    Seq(VariableType("a"), VariableType("b"), VariableType("b"), VariableType("b")), None, FixedType(SoQLBoolean))
-  // arguments: nwLat, nwLon, seLat, seLon (yMax,  xMin , yMin,  xMax)
-  val WithinBox = Function("within_box", FunctionName("within_box"), Map ("a"-> GeospatialLike, "b" -> RealNumLike),
-    Seq(VariableType("a"), VariableType("b"), VariableType("b"), VariableType("b"), VariableType("b")), None, FixedType(SoQLBoolean))
-
-  val LatitudeField = new MonomorphicFunction("latitude field", SpecialFunctions.Subscript, Seq(SoQLLocation, SoQLTextLiteral("latitude")), None, SoQLDouble).function
-  val LongitudeField = new MonomorphicFunction("longitude field", SpecialFunctions.Subscript, Seq(SoQLLocation, SoQLTextLiteral("longitude")), None, SoQLDouble).function
-
-  val IsNull = Function("is null", SpecialFunctions.IsNull, Map.empty, Seq(VariableType("a")), None, FixedType(SoQLBoolean))
-  val IsNotNull = Function("is not null", SpecialFunctions.IsNotNull, Map.empty, Seq(VariableType("a")), None, FixedType(SoQLBoolean))
-
-  val Between = Function("between", SpecialFunctions.Between, Map("a"->Ordered), Seq(VariableType("a"),VariableType("a"),VariableType("a")), None, FixedType(SoQLBoolean))
-  val NotBetween = Function("not between", SpecialFunctions.NotBetween, Map("a"->Ordered), Seq(VariableType("a"),VariableType("a"),VariableType("a")), None, FixedType(SoQLBoolean))
-
-  val Min = Function("min", FunctionName("min"), Map("a"->Ordered), Seq(VariableType("a")), None, VariableType("a"), isAggregate = true)
-  val Max = Function("max", FunctionName("max"), Map("a"->Ordered), Seq(VariableType("a")), None, VariableType("a"), isAggregate = true)
-  val CountStar = new MonomorphicFunction("count(*)", SpecialFunctions.StarFunc("count"), Seq(), None, SoQLNumber, isAggregate = true).function
-  val Count = Function("count", FunctionName("count"), Map.empty, Seq(VariableType("a")), None, FixedType(SoQLNumber), isAggregate = true)
-  val Sum = Function("sum", FunctionName("sum"), Map("a"->NumLike), Seq(VariableType("a")), None, VariableType("a"), isAggregate = true)
-  val Avg = Function("avg", FunctionName("avg"), Map("a"->NumLike), Seq(VariableType("a")), None, VariableType("a"), isAggregate = true)
-
-  val UnaryPlus = Function("unary +", SpecialFunctions.Operator("+"), Map("a"->NumLike), Seq(VariableType("a")), None, VariableType("a"))
-  val UnaryMinus = Function("unary -", SpecialFunctions.Operator("-"), Map("a"->NumLike), Seq(VariableType("a")), None, VariableType("a"))
-
-  val BinaryPlus = Function("+", SpecialFunctions.Operator("+"), Map("a"->NumLike), Seq(VariableType("a"), VariableType("a")), None, VariableType("a"))
-  val BinaryMinus = Function("-", SpecialFunctions.Operator("-"), Map("a"->NumLike), Seq(VariableType("a"), VariableType("a")), None, VariableType("a"))
-
-  val TimesNumNum = new MonomorphicFunction("*NN", SpecialFunctions.Operator("*"), Seq(SoQLNumber, SoQLNumber), None, SoQLNumber).function
-  val TimesDoubleDouble = new MonomorphicFunction("*DD", SpecialFunctions.Operator("*"), Seq(SoQLDouble, SoQLDouble), None, SoQLDouble).function
-  val TimesNumMoney = new MonomorphicFunction("*NM", SpecialFunctions.Operator("*"), Seq(SoQLNumber, SoQLMoney), None, SoQLMoney).function
-  val TimesMoneyNum = new MonomorphicFunction("*MN", SpecialFunctions.Operator("*"), Seq(SoQLMoney, SoQLNumber), None, SoQLMoney).function
-
-  val DivNumNum = new MonomorphicFunction("/NN", SpecialFunctions.Operator("/"), Seq(SoQLNumber, SoQLNumber), None, SoQLNumber).function
-  val DivDoubleDouble = new MonomorphicFunction("/DD", SpecialFunctions.Operator("/"), Seq(SoQLDouble, SoQLDouble), None, SoQLDouble).function
-  val DivMoneyNum = new MonomorphicFunction("/MN", SpecialFunctions.Operator("/"), Seq(SoQLMoney, SoQLNumber), None, SoQLMoney).function
-  val DivMoneyMoney = new MonomorphicFunction("/MM", SpecialFunctions.Operator("/"), Seq(SoQLMoney, SoQLMoney), None, SoQLNumber).function
-
-  val ExpNumNum = new MonomorphicFunction("^NN", SpecialFunctions.Operator("^"), Seq(SoQLNumber, SoQLNumber), None, SoQLNumber).function
-  val ExpDoubleDouble = new MonomorphicFunction("^DD", SpecialFunctions.Operator("^"), Seq(SoQLDouble, SoQLDouble), None, SoQLDouble).function
-
-  val ModNumNum = new MonomorphicFunction("%NN", SpecialFunctions.Operator("%"), Seq(SoQLNumber, SoQLNumber), None, SoQLNumber).function
-  val ModDoubleDouble = new MonomorphicFunction("%DD", SpecialFunctions.Operator("%"), Seq(SoQLDouble, SoQLDouble), None, SoQLDouble).function
-  val ModMoneyNum = new MonomorphicFunction("%MN", SpecialFunctions.Operator("%"), Seq(SoQLMoney, SoQLNumber), None, SoQLMoney).function
-  val ModMoneyMoney = new MonomorphicFunction("%MM", SpecialFunctions.Operator("%"), Seq(SoQLMoney, SoQLMoney), None, SoQLNumber).function
-
-  val NumberToMoney = new MonomorphicFunction("number to money", SpecialFunctions.Cast(SoQLMoney.name), Seq(SoQLNumber), None, SoQLMoney).function
-  val NumberToDouble = new MonomorphicFunction("number to double", SpecialFunctions.Cast(SoQLDouble.name), Seq(SoQLNumber), None, SoQLDouble).function
-
-  val And = new MonomorphicFunction("and", SpecialFunctions.Operator("and"), Seq(SoQLBoolean, SoQLBoolean), None, SoQLBoolean).function
-  val Or = new MonomorphicFunction("or", SpecialFunctions.Operator("or"), Seq(SoQLBoolean, SoQLBoolean), None, SoQLBoolean).function
-  val Not = new MonomorphicFunction("not", SpecialFunctions.Operator("not"), Seq(SoQLBoolean), None, SoQLBoolean).function
-
-  val In = new Function("in", SpecialFunctions.In, Map.empty, Seq(VariableType("a")), Some(VariableType("a")), FixedType(SoQLBoolean))
-  val NotIn = new Function("not in", SpecialFunctions.NotIn, Map.empty, Seq(VariableType("a")), Some(VariableType("a")), FixedType(SoQLBoolean))
-
-  val Like = new MonomorphicFunction("like", SpecialFunctions.Like, Seq(SoQLText, SoQLText), None, SoQLBoolean).function
-  val NotLike = new MonomorphicFunction("not like", SpecialFunctions.NotLike, Seq(SoQLText, SoQLText), None, SoQLBoolean).function
-
-  val Contains = new MonomorphicFunction("contains",  FunctionName("contains"), Seq(SoQLText, SoQLText), None, SoQLBoolean).function
-  val StartsWith = new MonomorphicFunction("starts_with",  FunctionName("starts_with"), Seq(SoQLText, SoQLText), None, SoQLBoolean).function
-  val Lower = new MonomorphicFunction("lower",  FunctionName("lower"), Seq(SoQLText), None, SoQLText).function
-  val Upper = new MonomorphicFunction("upper",  FunctionName("upper"), Seq(SoQLText), None, SoQLText).function
-
-  val FloatingTimeStampTruncYmd = new MonomorphicFunction("floating timestamp trunc day", FunctionName("date_trunc_ymd"), Seq(SoQLFloatingTimestamp), None, SoQLFloatingTimestamp).function
-  val FloatingTimeStampTruncYm = new MonomorphicFunction("floating timestamp trunc month", FunctionName("date_trunc_ym"), Seq(SoQLFloatingTimestamp), None, SoQLFloatingTimestamp).function
-  val FloatingTimeStampTruncY = new MonomorphicFunction("floating timestamp trunc year", FunctionName("date_trunc_y"), Seq(SoQLFloatingTimestamp), None, SoQLFloatingTimestamp).function
-
-  val castIdentities = for((n, t) <- SoQLType.typesByName.toSeq) yield {
-    Function(n.caseFolded+"::"+n.caseFolded, SpecialFunctions.Cast(n), Map.empty, Seq(FixedType(t)), None, FixedType(t))
+  def AAb(identity: String, name: FunctionName, A: Seq[SoQLType], b: SoQLType) = new Function[SoQLType](identity, name) {
+    val functions = for(a <- A) yield f(Seq(a, a), None, b)
+  }
+  def AAAb(identity: String, name: FunctionName, A: Seq[SoQLType], b: SoQLType) = new Function[SoQLType](identity, name) {
+    val functions = for(a <- A) yield f(Seq(a, a, a), None, b)
+  }
+  def AA(identity: String, name: FunctionName, A: Seq[SoQLType], isAggregate: Boolean = false) = new Function[SoQLType](identity, name) {
+    val functions = for(a <- A) yield f(Seq(a), None, a, isAggregate)
+  }
+  def AAA(identity: String, name: FunctionName, A: Seq[SoQLType], isAggregate: Boolean = false) = new Function[SoQLType](identity, name) {
+    val functions = for(a <- A) yield f(Seq(a, a), None, a, isAggregate)
+  }
+  def OrdOrdBool(identity: String, name: FunctionName) = AAb(identity, name, Ordered, SoQLBoolean)
+  def OrdOrdOrdBool(identity: String, name: FunctionName) = AAAb(identity, name, Ordered, SoQLBoolean)
+  def EqEqBool(identity: String, name: FunctionName) = AAb(identity, name, Equatable, SoQLBoolean)
+  def AnyT(identity: String, name: FunctionName, t: SoQLType, isAggregate: Boolean = false) = new Function[SoQLType](identity, name) {
+    val functions = for(a <- Universe) yield f(Seq(a), None, t, isAggregate)
   }
 
-  val NumberToText = new MonomorphicFunction("number to text", SpecialFunctions.Cast(SoQLText.name), Seq(SoQLNumber), None, SoQLText).function
-  val TextToNumber = new MonomorphicFunction("text to number", SpecialFunctions.Cast(SoQLNumber.name), Seq(SoQLText), None, SoQLNumber).function
-  val TextToMoney = new MonomorphicFunction("text to money", SpecialFunctions.Cast(SoQLMoney.name), Seq(SoQLText), None, SoQLMoney).function
+  val TextToFixedTimestamp = Function.simple("text to fixed timestamp", SpecialFunctions.Cast(SoQLFixedTimestamp.name), Seq(SoQLText), None, SoQLFixedTimestamp)
+  val TextToFloatingTimestamp = Function.simple("text to floating timestamp", SpecialFunctions.Cast(SoQLFloatingTimestamp.name), Seq(SoQLText), None, SoQLFloatingTimestamp)
+  val TextToDate = Function.simple("text to date", SpecialFunctions.Cast(SoQLDate.name), Seq(SoQLText), None, SoQLDate)
+  val TextToTime = Function.simple("text to time", SpecialFunctions.Cast(SoQLTime.name), Seq(SoQLText), None, SoQLTime)
 
-  val TextToBool = new MonomorphicFunction("text to boolean",  SpecialFunctions.Cast(SoQLBoolean.name), Seq(SoQLText), None, SoQLBoolean).function
-  val BoolToText = new MonomorphicFunction("boolean to text", SpecialFunctions.Cast(SoQLText.name), Seq(SoQLBoolean), None, SoQLText).function
+  val Concat = AAb("||", SpecialFunctions.Operator("||"), Universe, SoQLText)
 
-  val Prop = new MonomorphicFunction(".", SpecialFunctions.Subscript, Seq(SoQLObject, SoQLText), None, SoQLJson).function
-  val Index = new MonomorphicFunction("[]", SpecialFunctions.Subscript, Seq(SoQLArray, SoQLNumber), None, SoQLJson).function
-  val JsonProp = new MonomorphicFunction(".J", SpecialFunctions.Subscript, Seq(SoQLJson, SoQLText), None, SoQLJson).function
-  val JsonIndex = new MonomorphicFunction("[]J", SpecialFunctions.Subscript, Seq(SoQLJson, SoQLNumber), None, SoQLJson).function
+  val Gte = OrdOrdBool(">=", SpecialFunctions.Operator(">="))
+  val Gt = OrdOrdBool(">", SpecialFunctions.Operator(">"))
+  val Lt = OrdOrdBool("<", SpecialFunctions.Operator("<"))
+  val Lte = OrdOrdBool("<=", SpecialFunctions.Operator("<="))
+  val Eq = EqEqBool("=", SpecialFunctions.Operator("="))
+  val EqEq = EqEqBool("==", SpecialFunctions.Operator("=="))
+  val Neq = EqEqBool("<>", SpecialFunctions.Operator("<>"))
+  val BangEq = EqEqBool("!=", SpecialFunctions.Operator("!="))
 
-  val JsonToText = new MonomorphicFunction("json to text", SpecialFunctions.Cast(SoQLText.name), Seq(SoQLJson), None, SoQLText).function
-  val JsonToNumber = new MonomorphicFunction("json to number", SpecialFunctions.Cast(SoQLNumber.name), Seq(SoQLJson), None, SoQLNumber).function
-  val JsonToBool = new MonomorphicFunction("json to bool", SpecialFunctions.Cast(SoQLBoolean.name), Seq(SoQLJson), None, SoQLBoolean).function
-  val JsonToObject = new MonomorphicFunction("json to obj", SpecialFunctions.Cast(SoQLObject.name), Seq(SoQLJson), None, SoQLObject).function
-  val JsonToArray = new MonomorphicFunction("json to array", SpecialFunctions.Cast(SoQLArray.name), Seq(SoQLJson), None, SoQLArray).function
+  // arguments: lat, lon, distance in meter
+  val WithinCircle = new Function[SoQLType]("within_circle", FunctionName("within_circle")) {
+    val functions = for {
+      a <- GeospatialLike
+      b <- RealNumLike
+    } yield f(Seq(a, b, b, b), None, SoQLBoolean)
+  }
 
-  val TextToRowIdentifier = new MonomorphicFunction("text to rid", SpecialFunctions.Cast(SoQLID.name), Seq(SoQLText), None, SoQLID).function
-  val TextToRowVersion = new MonomorphicFunction("text to rowver", SpecialFunctions.Cast(SoQLVersion.name), Seq(SoQLText), None, SoQLVersion).function
+  // arguments: nwLat, nwLon, seLat, seLon (yMax,  xMin , yMin,  xMax)
+  val WithinBox = new Function[SoQLType]("within_box", FunctionName("within_box")) {
+    val functions = for {
+      a <- GeospatialLike
+      b <- RealNumLike
+    } yield f(Seq(a, b, b, b, b), None, SoQLBoolean)
+  }
+
+  val LatitudeField = Function.simple("latitude field", SpecialFunctions.Subscript, Seq(SoQLLocation, SoQLTextLiteral("latitude")), None, SoQLDouble)
+  val LongitudeField = Function.simple("longitude field", SpecialFunctions.Subscript, Seq(SoQLLocation, SoQLTextLiteral("longitude")), None, SoQLDouble)
+
+  val IsNull = AnyT("is null", SpecialFunctions.IsNull, SoQLBoolean)
+  val IsNotNull = AnyT("is not null", SpecialFunctions.IsNotNull, SoQLBoolean)
+
+  val Between = OrdOrdOrdBool("between", SpecialFunctions.Between)
+  val NotBetween = OrdOrdOrdBool("not between", SpecialFunctions.NotBetween)
+
+  val Min = AA("min", FunctionName("min"), Ordered, isAggregate = true)
+  val Max = AA("max", FunctionName("max"), Ordered, isAggregate = true)
+  val CountStar = Function.simple("count(*)", SpecialFunctions.StarFunc("count"), Seq(), None, SoQLNumber, isAggregate = true)
+  val Count = AnyT("count", FunctionName("count"), SoQLNumber, isAggregate = true)
+  val Sum = AA("sum", FunctionName("sum"), NumLike, isAggregate = true)
+  val Avg = AA("avg", FunctionName("avg"), NumLike, isAggregate = true)
+
+  val UnaryPlus = AA("unary +", SpecialFunctions.Operator("+"), NumLike)
+  val UnaryMinus = AA("unary -", SpecialFunctions.Operator("-"), NumLike)
+
+  val BinaryPlus = AAA("+", SpecialFunctions.Operator("+"), NumLike)
+  val BinaryMinus = AAA("-", SpecialFunctions.Operator("-"), NumLike)
+
+  val Times = new Function[SoQLType]("*", SpecialFunctions.Operator("*")) {
+    val functions = List(
+      f(Seq(SoQLNumber, SoQLNumber), None, SoQLNumber),
+      f(Seq(SoQLDouble, SoQLDouble), None, SoQLDouble),
+      f(Seq(SoQLNumber, SoQLMoney), None, SoQLMoney),
+      f(Seq(SoQLMoney, SoQLNumber), None, SoQLMoney)
+    )
+  }
+
+  val Div = new Function[SoQLType]("/", SpecialFunctions.Operator("/")) {
+    val functions = List(
+      f(Seq(SoQLNumber, SoQLNumber), None, SoQLNumber),
+      f(Seq(SoQLDouble, SoQLDouble), None, SoQLDouble),
+      f(Seq(SoQLMoney, SoQLNumber), None, SoQLMoney),
+      f(Seq(SoQLMoney, SoQLMoney), None, SoQLNumber)
+    )
+  }
+
+  val Exp = new Function[SoQLType]("^", SpecialFunctions.Operator("^")) {
+    val functions = List(
+      f(Seq(SoQLDouble, SoQLDouble), None, SoQLDouble),
+      f(Seq(SoQLNumber, SoQLNumber), None, SoQLNumber)
+    )
+  }
+
+  val Mode = new Function[SoQLType]("%", SpecialFunctions.Operator("%")) {
+    val functions = List(
+      f(Seq(SoQLNumber, SoQLNumber), None, SoQLNumber),
+      f(Seq(SoQLDouble, SoQLDouble), None, SoQLDouble),
+      f(Seq(SoQLMoney, SoQLNumber), None, SoQLMoney),
+      f(Seq(SoQLMoney, SoQLMoney), None, SoQLNumber)
+    )
+  }
+
+  val NumberToMoney = Function.simple("number to money", SpecialFunctions.Cast(SoQLMoney.name), Seq(SoQLNumber), None, SoQLMoney)
+  val NumberToDouble = Function.simple("number to double", SpecialFunctions.Cast(SoQLDouble.name), Seq(SoQLNumber), None, SoQLDouble)
+
+  val And = Function.simple("and", SpecialFunctions.Operator("and"), Seq(SoQLBoolean, SoQLBoolean), None, SoQLBoolean)
+  val Or = Function.simple("or", SpecialFunctions.Operator("or"), Seq(SoQLBoolean, SoQLBoolean), None, SoQLBoolean)
+  val Not = Function.simple("not", SpecialFunctions.Operator("not"), Seq(SoQLBoolean), None, SoQLBoolean)
+
+  def EqEqst(identity: String, name: FunctionName, t: SoQLType) = new Function[SoQLType](identity, name) {
+    val functions = for(a <- Equatable) yield f(Seq(a), Some(a), t)
+  }
+  val In = EqEqst("in", SpecialFunctions.In, SoQLBoolean)
+  val NotIn = EqEqst("not in", SpecialFunctions.NotIn, SoQLBoolean)
+
+  val Like = Function.simple("like", SpecialFunctions.Like, Seq(SoQLText, SoQLText), None, SoQLBoolean)
+  val NotLike = Function.simple("not like", SpecialFunctions.NotLike, Seq(SoQLText, SoQLText), None, SoQLBoolean)
+
+  val Contains = Function.simple("contains",  FunctionName("contains"), Seq(SoQLText, SoQLText), None, SoQLBoolean)
+  val StartsWith = Function.simple("starts_with",  FunctionName("starts_with"), Seq(SoQLText, SoQLText), None, SoQLBoolean)
+  val Lower = Function.simple("lower",  FunctionName("lower"), Seq(SoQLText), None, SoQLText)
+  val Upper = Function.simple("upper",  FunctionName("upper"), Seq(SoQLText), None, SoQLText)
+
+  val FloatingTimeStampTruncYmd = Function.simple("floating timestamp trunc day", FunctionName("date_trunc_ymd"), Seq(SoQLFloatingTimestamp), None, SoQLFloatingTimestamp)
+  val FloatingTimeStampTruncYm = Function.simple("floating timestamp trunc month", FunctionName("date_trunc_ym"), Seq(SoQLFloatingTimestamp), None, SoQLFloatingTimestamp)
+  val FloatingTimeStampTruncY = Function.simple("floating timestamp trunc year", FunctionName("date_trunc_y"), Seq(SoQLFloatingTimestamp), None, SoQLFloatingTimestamp)
+
+  val castIdentities = for(t <- Universe) yield {
+    Function.simple(t.name.caseFolded+"::"+t.name.caseFolded, SpecialFunctions.Cast(t.name), Seq(t), None, t)
+  }
+
+  val NumberToText = Function.simple("number to text", SpecialFunctions.Cast(SoQLText.name), Seq(SoQLNumber), None, SoQLText)
+  val TextToNumber = Function.simple("text to number", SpecialFunctions.Cast(SoQLNumber.name), Seq(SoQLText), None, SoQLNumber)
+  val TextToMoney = Function.simple("text to money", SpecialFunctions.Cast(SoQLMoney.name), Seq(SoQLText), None, SoQLMoney)
+
+  val TextToBool = Function.simple("text to boolean",  SpecialFunctions.Cast(SoQLBoolean.name), Seq(SoQLText), None, SoQLBoolean)
+  val BoolToText = Function.simple("boolean to text", SpecialFunctions.Cast(SoQLText.name), Seq(SoQLBoolean), None, SoQLText)
+
+  val Prop = Function.simple(".", SpecialFunctions.Subscript, Seq(SoQLObject, SoQLText), None, SoQLJson)
+  val Index = Function.simple("[]", SpecialFunctions.Subscript, Seq(SoQLArray, SoQLNumber), None, SoQLJson)
+  val JsonProp = Function.simple(".J", SpecialFunctions.Subscript, Seq(SoQLJson, SoQLText), None, SoQLJson)
+  val JsonIndex = Function.simple("[]J", SpecialFunctions.Subscript, Seq(SoQLJson, SoQLNumber), None, SoQLJson)
+
+  val JsonToText = Function.simple("json to text", SpecialFunctions.Cast(SoQLText.name), Seq(SoQLJson), None, SoQLText)
+  val JsonToNumber = Function.simple("json to number", SpecialFunctions.Cast(SoQLNumber.name), Seq(SoQLJson), None, SoQLNumber)
+  val JsonToBool = Function.simple("json to bool", SpecialFunctions.Cast(SoQLBoolean.name), Seq(SoQLJson), None, SoQLBoolean)
+  val JsonToObject = Function.simple("json to obj", SpecialFunctions.Cast(SoQLObject.name), Seq(SoQLJson), None, SoQLObject)
+  val JsonToArray = Function.simple("json to array", SpecialFunctions.Cast(SoQLArray.name), Seq(SoQLJson), None, SoQLArray)
+
+  val TextToRowIdentifier = Function.simple("text to rid", SpecialFunctions.Cast(SoQLID.name), Seq(SoQLText), None, SoQLID)
+  val TextToRowVersion = Function.simple("text to rowver", SpecialFunctions.Cast(SoQLVersion.name), Seq(SoQLText), None, SoQLVersion)
 
   def potentialAccessors = for {
     method <- getClass.getMethods
@@ -150,18 +202,18 @@ object SoQLFunctions {
 
   val functionsByIdentity = allFunctions.map { f => f.identity -> f }.toMap
 
-  val nAdicFunctions = SoQLFunctions.allFunctions.filterNot(_.isVariadic)
-  val variadicFunctions = SoQLFunctions.allFunctions.filter(_.isVariadic)
+  val nAdicMonomorphicFunctions = SoQLFunctions.allFunctions.flatMap(_.functions.filterNot(_.isVariadic))
+  val variadicMonomorphicFunctions = SoQLFunctions.allFunctions.flatMap(_.functions.filter(_.isVariadic))
 
-  private def analysisify(f: Function[SoQLType]): Function[SoQLAnalysisType] = f
+  private def analysisify(f: MonomorphicFunction[SoQLType]): MonomorphicFunction[SoQLAnalysisType] = f
 
-  val nAdicFunctionsByNameThenArity: Map[FunctionName, Map[Int, Set[Function[SoQLAnalysisType]]]] =
-    nAdicFunctions.groupBy(_.name).mapValues { fs =>
+  val nAdicMonomorphicFunctionsByNameThenArity: Map[FunctionName, Map[Int, Set[MonomorphicFunction[SoQLAnalysisType]]]] =
+    nAdicMonomorphicFunctions.groupBy(_.name).mapValues { fs =>
       fs.groupBy(_.minArity).mapValues(_.map(analysisify).toSet).toMap
     }.toMap
 
-  val variadicFunctionsByNameThenMinArity: Map[FunctionName, Map[Int, Set[Function[SoQLAnalysisType]]]] =
-    variadicFunctions.groupBy(_.name).mapValues { fs =>
+  val variadicMonomorphicFunctionsByNameThenMinArity: Map[FunctionName, Map[Int, Set[MonomorphicFunction[SoQLAnalysisType]]]] =
+    variadicMonomorphicFunctions.groupBy(_.name).mapValues { fs =>
       fs.groupBy(_.minArity).mapValues(_.map(analysisify).toSet).toMap
     }.toMap
 }

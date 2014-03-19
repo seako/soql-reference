@@ -7,7 +7,7 @@ import com.socrata.soql.types.obfuscation.CryptProvider
 
 object SoQLFunctionInfo extends FunctionInfo[SoQLAnalysisType] {
   def functionsWithArity(name: FunctionName, n: Int) =
-    SoQLFunctions.nAdicFunctionsByNameThenArity.get(name) match {
+    SoQLFunctions.nAdicMonomorphicFunctionsByNameThenArity.get(name) match {
       case Some(funcsByArity) =>
         funcsByArity.get(n) match {
           case Some(fs) =>
@@ -19,10 +19,10 @@ object SoQLFunctionInfo extends FunctionInfo[SoQLAnalysisType] {
         variadicFunctionsWithArity(name, n)
     }
 
-  def variadicFunctionsWithArity(name: FunctionName, n: Int): Set[Function[SoQLAnalysisType]] = {
-    SoQLFunctions.variadicFunctionsByNameThenMinArity.get(name) match {
+  def variadicFunctionsWithArity(name: FunctionName, n: Int): Set[MonomorphicFunction[SoQLAnalysisType]] = {
+    SoQLFunctions.variadicMonomorphicFunctionsByNameThenMinArity.get(name) match {
       case Some(funcsByArity) =>
-        var result = Set.empty[Function[SoQLAnalysisType]]
+        var result = Set.empty[MonomorphicFunction[SoQLAnalysisType]]
         var i = n
         while(i >= 0) {
           funcsByArity.get(i) match {
