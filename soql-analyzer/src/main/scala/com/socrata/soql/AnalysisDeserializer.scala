@@ -9,7 +9,7 @@ import com.google.protobuf.CodedInputStream
 import gnu.trove.map.hash.TIntObjectHashMap
 
 import com.socrata.soql.environment.ColumnName
-import com.socrata.soql.functions.{MonomorphicFunction, Function}
+import com.socrata.soql.functions.Function
 import com.socrata.soql.parsing.SoQLPosition
 import com.socrata.soql.typed._
 import com.socrata.soql.collection.OrderedMap
@@ -22,7 +22,7 @@ private trait DeserializationDictionary[C, T] {
   def types(i: Int): T
   def labels(i: Int): ColumnName
   def columns(i: Int): C
-  def functions(i: Int): MonomorphicFunction[T]
+  def functions(i: Int): Function[T]
   def strings(i: Int): String
 }
 
@@ -34,14 +34,14 @@ class AnalysisDeserializer[C, T](columnDeserializer: String => C, typeDeserializ
                                       stringsRegistry: TIntObjectHashMap[String],
                                       labelsRegistry: TIntObjectHashMap[ColumnName],
                                       columnsRegistry: TIntObjectHashMap[C],
-                                      functionsRegistry: TIntObjectHashMap[MonomorphicFunction[T]])
+                                      functionsRegistry: TIntObjectHashMap[Function[T]])
     extends DeserializationDictionary[C, T]
   {
     def types(i: Int): T = typesRegistry.get(i)
     def strings(i: Int): String = stringsRegistry.get(i)
     def labels(i: Int): ColumnName = labelsRegistry.get(i)
     def columns(i: Int): C = columnsRegistry.get(i)
-    def functions(i: Int): MonomorphicFunction[T] = functionsRegistry.get(i)
+    def functions(i: Int): Function[T] = functionsRegistry.get(i)
   }
 
   private object DeserializationDictionaryImpl {
@@ -69,14 +69,7 @@ class AnalysisDeserializer[C, T](columnDeserializer: String => C, typeDeserializ
         columnDeserializer(strings.get(in.readUInt32()))
       }
       val functions = readRegistry(in) {
-        val function = functionMap(strings.get(in.readUInt32()))
-        val bindingsBuilder = Map.newBuilder[String, T]
-        for(_ <- 1 to in.readUInt32()) {
-          val typeVar = strings.get(in.readUInt32())
-          val typ = types.get(in.readUInt32())
-          bindingsBuilder += typeVar -> typ
-        }
-        MonomorphicFunction(function, bindingsBuilder.result())
+        functionMap(strings.get(in.readUInt32()))
       }
 
       new DeserializationDictionaryImpl(types, strings, labels, columns, functions)

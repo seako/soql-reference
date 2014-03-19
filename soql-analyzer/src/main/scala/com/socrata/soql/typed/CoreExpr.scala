@@ -3,7 +3,7 @@ package com.socrata.soql.typed
 import scala.util.parsing.input.Position
 import scala.runtime.ScalaRunTime
 
-import com.socrata.soql.functions.MonomorphicFunction
+import com.socrata.soql.functions.Function
 
 /** A "core expression" -- nothing but literals, column references, and function calls,
   * with aliases fully expanded and with types ascribed at each node. */
@@ -40,7 +40,7 @@ case class BooleanLiteral[Type](value: Boolean, typ: Type)(val position: Positio
 case class NullLiteral[Type](typ: Type)(val position: Position) extends TypedLiteral[Type] {
   override final def asString = "NULL"
 }
-case class FunctionCall[ColumnId, Type](function: MonomorphicFunction[Type], parameters: Seq[CoreExpr[ColumnId, Type]])(val position: Position, val functionNamePosition: Position) extends CoreExpr[ColumnId, Type] {
+case class FunctionCall[ColumnId, Type](function: Function[Type], parameters: Seq[CoreExpr[ColumnId, Type]])(val position: Position, val functionNamePosition: Position) extends CoreExpr[ColumnId, Type] {
   if(function.isVariadic) {
     require(parameters.length >= function.minArity, "parameter/arity mismatch")
   } else {

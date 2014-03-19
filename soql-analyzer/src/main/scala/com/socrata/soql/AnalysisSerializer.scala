@@ -10,7 +10,7 @@ import gnu.trove.map.hash.TObjectIntHashMap
 
 import com.socrata.soql.parsing.SoQLPosition
 import com.socrata.soql.typed._
-import com.socrata.soql.functions.MonomorphicFunction
+import com.socrata.soql.functions.Function
 import com.socrata.soql.collection.OrderedMap
 import com.socrata.soql.environment.ColumnName
 
@@ -19,7 +19,7 @@ private trait SerializationDictionary[C,T] {
   def registerString(s: String): Int
   def registerColumn(col: C): Int
   def registerLabel(name: ColumnName): Int
-  def registerFunction(func: MonomorphicFunction[T]): Int
+  def registerFunction(func: Function[T]): Int
 }
 
 class AnalysisSerializer[C,T](serializeColumn: C => String, serializeType: T => String) extends ((OutputStream, SoQLAnalysis[C, T]) => Unit) {
@@ -40,7 +40,7 @@ class AnalysisSerializer[C,T](serializeColumn: C => String, serializeType: T => 
     val types = makeMap[T] // This MUST be written BEFORE functionsUnsafe!
     val labels = makeMap[ColumnName]
     val columns = makeMap[C]
-    val functions = makeMap[MonomorphicFunction[T]]
+    val functions = makeMap[Function[T]]
 
     def registerString(s: String): Int =
       register(strings, s)
@@ -77,15 +77,11 @@ class AnalysisSerializer[C,T](serializeColumn: C => String, serializeType: T => 
       }
     }
 
-    def registerFunction(func: MonomorphicFunction[T]): Int = {
+    def registerFunction(func: Function[T]): Int = {
       val count = functions.size
       functions.putIfAbsent(func, count) match {
         case -1 =>
-          registerString(func.function.identity)
-          func.bindings.foreach { case (typeVar, typ) =>
-            registerString(typeVar)
-            registerType(typ)
-          }
+          registerString(func.identity)
           count
         case id =>
           id
@@ -113,13 +109,8 @@ class AnalysisSerializer[C,T](serializeColumn: C => String, serializeType: T => 
       }
 
     private def saveFunctions(out: CodedOutputStream) =
-      saveRegistry(out, functions) { case MonomorphicFunction(function, bindings) =>
+      saveRegistry(out, functions) { function =>
         out.writeUInt32NoTag(strings.get(function.identity))
-        out.writeUInt32NoTag(bindings.size)
-        for((typeVar, typ) <- bindings) {
-          out.writeUInt32NoTag(strings.get(typeVar))
-          out.writeUInt32NoTag(types.get(typ))
-        }
       }
 
     private def saveStrings(out: CodedOutputStream) =

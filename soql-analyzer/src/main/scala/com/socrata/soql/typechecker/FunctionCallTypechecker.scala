@@ -5,18 +5,18 @@ import com.socrata.soql.typed.Typable
 import com.socrata.soql.environment.FunctionName
 
 object UtilTypes {
-  type ConversionSet[Type] = Seq[Option[MonomorphicFunction[Type]]]
+  type ConversionSet[Type] = Seq[Option[Function[Type]]]
 }
 
 import UtilTypes._
 
 sealed abstract class OverloadResult[+Type]
 case object NoMatch extends OverloadResult[Nothing]
-case class Ambiguous[Type](candidates: Map[MonomorphicFunction[Type], ConversionSet[Type]]) extends OverloadResult[Type] {
+case class Ambiguous[Type](candidates: Map[Function[Type], ConversionSet[Type]]) extends OverloadResult[Type] {
   val conversionsRequired = candidates.head._2.size
   require(candidates.forall(_._2.size == conversionsRequired), "ambiguous functions do not all have the same number of possible conversions")
 }
-case class Matched[Type](function: MonomorphicFunction[Type], conversions: ConversionSet[Type]) extends OverloadResult[Type]
+case class Matched[Type](function: Function[Type], conversions: ConversionSet[Type]) extends OverloadResult[Type]
 
 sealed abstract class CandidateEvaluation[Type]
 case class TypeMismatchFailure[Type](expected: Set[Type], found: Type, idx: Int) extends CandidateEvaluation[Type] {
@@ -29,7 +29,6 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
   val log = org.slf4j.LoggerFactory.getLogger(classOf[FunctionCallTypechecker[_]])
 
   type Func = Function[Type]
-  type MFunc = MonomorphicFunction[Type]
   type Val = Typable[Type]
   type ConvSet = ConversionSet[Type]
 
@@ -56,8 +55,8 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
     // parameters.
     val good = for {
       candidate <- candidates.toSeq
-      (mfunc, Passed(conversions)) <- evaluateCandidate(candidate, parameters)
-    } yield (mfunc, conversions)
+      Passed(conversions) <- Iterator.single(evaluateCandidate(candidate, parameters))
+    } yield (candidate, conversions)
 
     if(good.isEmpty) {
       NoMatch
@@ -69,8 +68,8 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
       if(bestGroup.size > 1) {
         // ok, still ambiguous.  So let's try finding by minimum-number-of-distinct-types
         // The idea here is to make "null :: number" produce ::(number -> number) as its result.
-        val numberOfDistinctTypes = bestGroup.map { case (monoFunc, conversions) =>
-          (monoFunc.allParameters.toSet + monoFunc.result).size
+        val numberOfDistinctTypes = bestGroup.map { case (func, _) =>
+          func.distinctTypes.size
         }
         val minDistinct = numberOfDistinctTypes.min
         val minimalOperations = (bestGroup, numberOfDistinctTypes).zipped.filter { (_, numDistinct) => numDistinct == minDistinct }._1
@@ -87,26 +86,8 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
     }
   }
 
-  def evaluateCandidate(candidate: Func, parameters: Seq[Val]): Iterator[(MFunc, CandidateEvaluation[Type])] = {
+  def evaluateCandidate(candidate: Func, parameters: Seq[Val]): CandidateEvaluation[Type] = {
     require(goodArity(candidate, parameters))
-
-    // yay combinatorial explosion!  Fortunately in practice we'll only ever have one or _maybe_ two type parameters.
-    def loop(remaining: List[String], bindings: Map[String, Type]): Iterator[(MFunc, CandidateEvaluation[Type])] = {
-      remaining match {
-        case hd :: tl =>
-          typeParameterUniverse.filter(candidate.constraints.getOrElse(hd, typeParameterUniverse)).iterator.flatMap { typ =>
-            loop(tl, bindings + (hd -> typ))
-          }
-        case Nil =>
-          val monomorphic = MonomorphicFunction(candidate, bindings)
-          Iterator(monomorphic -> evaluateMonomorphicCandidate(MonomorphicFunction(candidate, bindings), parameters))
-      }
-    }
-    loop(candidate.typeParameters.toList, Map.empty)
-  }
-
-  def evaluateMonomorphicCandidate(candidate: MFunc, parameters: Seq[Val]): CandidateEvaluation[Type] = {
-    require(goodArity(candidate.function, parameters))
     val parameterConversions: ConvSet = (candidate.allParameters, parameters, Stream.from(0)).zipped.map { (expectedTyp, value, idx) =>
       if(canBePassedToWithoutConversion(value.typ, expectedTyp)) {
         None
@@ -135,7 +116,7 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
     // addition causes a type error.
     for(paramList <- params.inits.toIndexedSeq.reverse.drop(1)) {
       val n = paramList.length
-      val res = resolveOverload(fs.map { f => f.copy(parameters = f.parameters.take(n)) }, paramList)
+      val res = resolveOverload(fs.map { f => f.takeParameters(n) }, paramList)
       res match {
         case NoMatch =>
           val paramIdx = n - 1
@@ -150,7 +131,7 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
    * This is kinda evil (and since no one uses literal nulls in ambiguous
    * places in expressions ANYWAY hopefully nearly useless), but meh.  Has
    * to be done. */
-  def disambiguateNulls(failure: Map[MFunc, ConvSet], parameters: Seq[Val], nullType: Type): Option[(String, MFunc, ConvSet)] = {
+  def disambiguateNulls(failure: Map[Func, ConvSet], parameters: Seq[Val], nullType: Type): Option[(String, Func, ConvSet)] = {
     case class SimpleValue(typ: Type) extends Typable[Type]
 
     // ok.  First, if half or more of all parameters are the same type
@@ -165,7 +146,7 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
     if(paramsByType.size == 2 && paramsByType.contains(nullType)) {
       val typedParams = (paramsByType - nullType).head._2
       if(typedParams.size >= parameters.size/2) {
-        resolveOverload(failure.keySet.filter(allParamsTheSameType(_).isDefined).map(_.function), parameters.map { p => if(p.typ == nullType) typedParams(0) else p }) match {
+        resolveOverload(failure.keySet.filter(allParamsTheSameType(_).isDefined), parameters.map { p => if(p.typ == nullType) typedParams(0) else p }) match {
           case Matched(f, c) => return Some(("half or more not-null same type", f, c))
           case _ => // nothing
         }
@@ -182,7 +163,7 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
       }
       val withoutImplicitConversions = new FunctionCallTypechecker[Type](typeInfo, functionInfoWithoutImplicitConversions)
       for(t <- typeParameterUniverse) {
-        withoutImplicitConversions.resolveOverload(failure.map(_._1.function).toSet, parameters.map { p => if(p.typ == nullType) SimpleValue(t) else p }) match {
+        withoutImplicitConversions.resolveOverload(failure.map(_._1).toSet, parameters.map { p => if(p.typ == nullType) SimpleValue(t) else p }) match {
           case Matched(f,c) => return Some(("one null parameter", f, c))
           case _ => // nothing
         }
@@ -194,7 +175,7 @@ class FunctionCallTypechecker[Type](typeInfo: TypeInfo[Type], functionInfo: Func
     sys.error("nyi")
   }
 
-  def allParamsTheSameType(f: MFunc): Option[Type] = {
+  def allParamsTheSameType(f: Func): Option[Type] = {
     if(f.parameters.nonEmpty && f.parameters.forall(_ == f.parameters(0))) Some(f.parameters(0))
     else None
   }

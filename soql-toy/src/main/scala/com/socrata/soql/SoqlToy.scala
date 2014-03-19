@@ -50,7 +50,10 @@ object SoqlToy extends (Array[String] => Unit) {
         menu()
       } else {
         try {
+          val now = System.nanoTime()
           val analysis = analyzer.analyzeFullQuery(selection)
+          val end = System.nanoTime()
+          println("Analysis took " + (end - now)/1000000 + "ms")
 
           println("Outputs:")
           Util.printList(analysis.selection)

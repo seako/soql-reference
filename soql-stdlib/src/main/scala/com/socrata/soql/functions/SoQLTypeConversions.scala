@@ -26,29 +26,26 @@ object SoQLTypeConversions {
     SoQLVersion
   )
 
-  private def getMonomorphically(f: Function[SoQLType]): MonomorphicFunction[SoQLType] =
-    f.monomorphic.getOrElse(sys.error(f.name + " not monomorphic?"))
-
   private val textToFixedTimestampFunc =
-    Some(SoQLFunctions.TextToFixedTimestamp.monomorphic.getOrElse(sys.error("text to fixed_timestamp conversion not monomorphic?")))
+    Some(SoQLFunctions.TextToFixedTimestamp)
   private val textToFloatingTimestampFunc =
-    Some(SoQLFunctions.TextToFloatingTimestamp.monomorphic.getOrElse(sys.error("text to floating_timestamp conversion not monomorphic?")))
+    Some(SoQLFunctions.TextToFloatingTimestamp)
   private val textToDateFunc =
-    Some(SoQLFunctions.TextToDate.monomorphic.getOrElse(sys.error("text to date conversion not monomorphic?")))
+    Some(SoQLFunctions.TextToDate)
   private val textToTimeFunc =
-    Some(SoQLFunctions.TextToTime.monomorphic.getOrElse(sys.error("text to time conversion not monomorphic?")))
+    Some(SoQLFunctions.TextToTime)
   private val numberToMoneyFunc =
-    Some(SoQLFunctions.NumberToMoney.monomorphic.getOrElse(sys.error("text to money conversion not monomorphic?")))
+    Some(SoQLFunctions.NumberToMoney)
   private val numberToDoubleFunc =
-    Some(SoQLFunctions.NumberToDouble.monomorphic.getOrElse(sys.error("text to money conversion not monomorphic?")))
+    Some(SoQLFunctions.NumberToDouble)
   private val textToRowIdFunc =
-    Some(SoQLFunctions.TextToRowIdentifier.monomorphic.getOrElse(sys.error("text to row_identifier conversion not monomorphic?")))
+    Some(SoQLFunctions.TextToRowIdentifier)
   private val textToRowVersionFunc =
-    Some(SoQLFunctions.TextToRowVersion.monomorphic.getOrElse(sys.error("text to row_version conversion not monomorphic?")))
+    Some(SoQLFunctions.TextToRowVersion)
   private val textToNumberFunc =
-    Some(getMonomorphically(SoQLFunctions.TextToNumber))
+    Some(SoQLFunctions.TextToNumber)
   private val textToMoneyFunc =
-    Some(getMonomorphically(SoQLFunctions.TextToMoney))
+    Some(SoQLFunctions.TextToMoney)
 
   private def isNumberLiteral(s: String) = try {
     val lexer = new Lexer(s)
@@ -61,7 +58,7 @@ object SoQLTypeConversions {
       false
   }
 
-  def implicitConversions(from: SoQLAnalysisType, to: SoQLAnalysisType): Option[MonomorphicFunction[SoQLType]] = {
+  def implicitConversions(from: SoQLAnalysisType, to: SoQLAnalysisType): Option[Function[SoQLType]] = {
     (from,to) match {
       case (SoQLTextLiteral(SoQLFixedTimestamp.StringRep(_)), SoQLFixedTimestamp) =>
         textToFixedTimestampFunc
